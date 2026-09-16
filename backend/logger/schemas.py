@@ -304,6 +304,10 @@ class ManualEntryResponse(BaseModel):
 
 class DailyActivityResponse(BaseModel):
     date: str
+    # The session this day belongs to — for past days that is an archived
+    # session, not the active one.
+    session_id: int | None = None
+    session_label: str | None = None
     total_minutes: int
     timer_entries: list[TimerEntryResponse] = []
     manual_entries: list[ManualEntryResponse] = []

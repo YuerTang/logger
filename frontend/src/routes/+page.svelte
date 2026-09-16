@@ -49,7 +49,12 @@
 
 	let dailyActivity = $state<DailyActivityResponse | null>(null);
 	let streak = $state<StreakResponse>({ current: 0, longest: 0 });
+	// Quick Start always fires a timer for right now, so it offers the active
+	// session's categories. The manual-entry form backfills the day being
+	// viewed, which for a past day is an archived session with its own
+	// categories — hence two lists, identical while viewing today.
 	let categories = $state<CategoryResponse[]>([]);
+	let dayCategories = $state<CategoryResponse[]>([]);
 	let quickCategoryId = $state<number | null>(null);
 	let startingQuick = $state(false);
 	let stoppingTimer = $state<TimerEntryResponse | null>(null);
@@ -86,6 +91,17 @@
 			try {
 				categories = await api.getCategories(session.id);
 			} catch { /* */ }
+		}
+
+		const daySessionId = dailyActivity?.session_id ?? session?.id ?? null;
+		if (daySessionId === null) {
+			dayCategories = [];
+		} else if (daySessionId === session?.id) {
+			dayCategories = categories;
+		} else {
+			try {
+				dayCategories = await api.getCategories(daySessionId);
+			} catch { dayCategories = []; }
 		}
 	}
 
@@ -490,7 +506,7 @@
 
 {#if showAddEntry && $activeSession}
 	<ManualEntryModal
-		{categories}
+		categories={dayCategories}
 		presetDate={selectedDate}
 		onCreated={handleAddCreated}
 		onClose={() => (showAddEntry = false)}

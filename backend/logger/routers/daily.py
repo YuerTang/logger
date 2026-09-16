@@ -9,6 +9,7 @@ from logger.models import (
     Session, DailyRecord, Observation, TimerEntry, ManualEntry, Category,
     BreakDay,
 )
+from logger.services.session_service import resolve_session_for_date
 from logger.schemas import (
     DailyActivityResponse, TimerEntryResponse, ManualEntryResponse,
     ObservationResponse, StreakResponse,
@@ -19,7 +20,7 @@ router = APIRouter(prefix="/daily", tags=["daily"])
 
 @router.get("/{date}", response_model=DailyActivityResponse)
 async def get_daily_activity(date: str, db: AsyncSession = Depends(get_db)):
-    session = await _get_active_session(db)
+    session = await resolve_session_for_date(date, db)
     if not session:
         raise HTTPException(status_code=400, detail="No active session")
 
@@ -115,6 +116,8 @@ async def get_daily_activity(date: str, db: AsyncSession = Depends(get_db)):
 
     return DailyActivityResponse(
         date=date,
+        session_id=session.id,
+        session_label=session.label,
         total_minutes=total_minutes,
         timer_entries=timer_entries,
         manual_entries=manual_entries,
@@ -195,3 +198,4 @@ async def _get_active_session(db: AsyncSession) -> Session | None:
         select(Session).where(Session.is_active == True)
     )
     return result.scalar_one_or_none()
+

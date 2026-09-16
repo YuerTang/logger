@@ -178,6 +178,9 @@ export interface ObservationResponse {
 
 export interface DailyActivityResponse {
 	date: string;
+	// Session the day belongs to — an archived one for past days.
+	session_id: number | null;
+	session_label: string | null;
 	total_minutes: number;
 	timer_entries: TimerEntryResponse[];
 	manual_entries: ManualEntryResponse[];

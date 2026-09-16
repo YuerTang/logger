@@ -6,6 +6,7 @@ from logger.database import get_db
 from logger.models import Session, ManualEntry, Category, PlanItem
 from logger.schemas import ManualEntryCreate, ManualEntryResponse, ManualEntryUpdate
 from logger.services import manual_entry_service
+from logger.services.session_service import resolve_session_for_date
 
 router = APIRouter(prefix="/manual-entries", tags=["manual-entries"])
 
@@ -33,7 +34,11 @@ async def _entry_response(entry: ManualEntry, db: AsyncSession) -> ManualEntryRe
 async def create_manual_entry(
     data: ManualEntryCreate, db: AsyncSession = Depends(get_db)
 ):
-    session = await _get_active_session(db)
+    # Entries are filed under the session that owns the day they are logged
+    # for, not whichever session happens to be active — backfilling a day from
+    # an archived session must land in that session, or the recorder (which
+    # reads a day through the same resolver) would never show it again.
+    session = await resolve_session_for_date(data.date, db)
     if not session:
         raise HTTPException(status_code=400, detail="No active session")
 
