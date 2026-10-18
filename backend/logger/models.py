@@ -226,6 +226,15 @@ class PlanItem(Base):
     end_time = Column(Text)
     status = Column(Text, nullable=False, default="planned")  # "planned" | "done"
     importance = Column(Text)  # "low" | "medium" | "high" | NULL (unset)
+    # Notion sync (see services/notion_sync_service.py). NULL for items that
+    # only exist in log(ger).
+    notion_page_id = Column(Text)
+    # Notion's last_edited_time as of our last sync — a different value on the
+    # next pull means the task changed in Notion.
+    notion_last_edited = Column(Text)
+    # Our status as of the last sync — a different value means it changed here
+    # and should be pushed to Notion's checkbox.
+    notion_synced_status = Column(Text)
     created_at = Column(Text, server_default=text("(datetime('now'))"))
     updated_at = Column(Text, server_default=text("(datetime('now'))"))
 
@@ -339,3 +348,45 @@ class GitHubRepoLink(Base):
         UniqueConstraint("family_id", "repo_full_name"),
         Index("idx_github_links_family", "family_id"),
     )
+
+
+
+class Goal(Base):
+    """A goal defined by its deliverables, e.g. "Blackswan → CVPR 2027".
+
+    Progress is judged by deliverables done against their due dates, not by
+    hours. `categories` (JSON list of category names, matched across
+    sessions) only links logged time to the goal so it can be shown as
+    context."""
+    __tablename__ = "goals"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    title = Column(Text, nullable=False)
+    deadline = Column(Text)  # YYYY-MM-DD, the final deliverable's date
+    categories = Column(Text, nullable=False, default="[]")
+    note = Column(Text)
+    position = Column(Integer, default=0)
+    archived = Column(Boolean, default=False)
+    created_at = Column(Text, server_default=text("(datetime('now'))"))
+
+    deliverables = relationship(
+        "Deliverable", back_populates="goal", cascade="all, delete-orphan",
+        order_by="Deliverable.position",
+    )
+
+
+class Deliverable(Base):
+    """One concrete thing a goal needs, with a due date and a done state."""
+    __tablename__ = "deliverables"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    goal_id = Column(Integer, ForeignKey("goals.id", ondelete="CASCADE"), nullable=False)
+    title = Column(Text, nullable=False)
+    due_date = Column(Text)  # YYYY-MM-DD
+    done = Column(Boolean, default=False)
+    done_at = Column(Text)
+    note = Column(Text)
+    position = Column(Integer, default=0)
+    created_at = Column(Text, server_default=text("(datetime('now'))"))
+
+    goal = relationship("Goal", back_populates="deliverables")

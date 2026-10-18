@@ -385,6 +385,7 @@ class PlanItemResponse(BaseModel):
     manual_count: int = 0
     logged_minutes: int = 0
     created_at: str | None = None
+    notion_page_id: str | None = None
 
     model_config = {"from_attributes": True}
 

@@ -161,6 +161,7 @@ export interface PlanItemResponse {
 	manual_count: number;
 	logged_minutes: number;
 	created_at: string | null;
+	notion_page_id?: string | null;
 }
 
 export interface PlanItemDetailResponse extends PlanItemResponse {
@@ -467,6 +468,73 @@ function buildAnalyticsQs(filters?: AnalyticsFilters): string {
 	if (filters.week_number != null) params.set('week_number', String(filters.week_number));
 	const qs = params.toString();
 	return qs ? `?${qs}` : '';
+}
+
+// ── Goals (deliverable-based) ────────────────────────────
+
+export interface DeliverableResponse {
+	id: number;
+	goal_id: number;
+	title: string;
+	due_date: string | null;
+	done: boolean;
+	done_at: string | null;
+	note: string | null;
+	position: number;
+	days_until_due: number | null;
+	overdue: boolean;
+}
+
+export type GoalStatus = 'on_track' | 'due_soon' | 'behind' | 'done';
+
+export interface GoalResponse {
+	id: number;
+	title: string;
+	deadline: string | null;
+	days_left: number | null;
+	categories: string[];
+	note: string | null;
+	position: number;
+	archived: boolean;
+	status: GoalStatus;
+	done_count: number;
+	total_count: number;
+	overdue_count: number;
+	next_up: DeliverableResponse[];
+	deliverables: DeliverableResponse[];
+	time: { today_hours: number; week_hours: number };
+}
+
+export interface GoalInput {
+	title?: string;
+	deadline?: string | null;
+	categories?: string[];
+	note?: string | null;
+	position?: number;
+	archived?: boolean;
+	deliverables?: { title: string; due_date?: string | null; done?: boolean; note?: string | null }[];
+}
+
+// ── Notion sync ──────────────────────────────────────────
+
+export interface NotionSyncResult {
+	created: number;
+	updated: number;
+	pushed_done: number;
+	pushed_new: number;
+	unmatched: string[];
+	errors: string[];
+	synced_at: string;
+}
+
+export interface NotionStatus {
+	has_token: boolean;
+	database_id: string | null;
+	rules: { match: string; category: string }[];
+	default_category: string | null;
+	push_new: boolean;
+	last_sync: string | null;
+	last_result: NotionSyncResult | null;
 }
 
 // ── API Functions ────────────────────────────────────────
@@ -823,4 +891,37 @@ export const api = {
 		}),
 	deletePlanItem: (id: number) =>
 		request<Record<string, unknown>>(`/planner/items/${id}`, { method: 'DELETE' }),
+
+	// Goals
+	getGoals: (includeArchived = false) =>
+		request<GoalResponse[]>(`/goals${includeArchived ? '?include_archived=true' : ''}`),
+	createGoal: (data: GoalInput) =>
+		request<GoalResponse>('/goals', { method: 'POST', body: JSON.stringify(data) }),
+	importGoals: (data: GoalInput[]) =>
+		request<GoalResponse[]>('/goals/import', { method: 'POST', body: JSON.stringify(data) }),
+	updateGoal: (id: number, data: GoalInput) =>
+		request<GoalResponse>(`/goals/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+	deleteGoal: (id: number) =>
+		request<{ ok: boolean }>(`/goals/${id}`, { method: 'DELETE' }),
+	addDeliverable: (goalId: number, data: { title: string; due_date?: string | null; note?: string | null }) =>
+		request<GoalResponse>(`/goals/${goalId}/deliverables`, { method: 'POST', body: JSON.stringify(data) }),
+	updateDeliverable: (id: number, data: { title?: string; due_date?: string | null; done?: boolean; note?: string | null }) =>
+		request<GoalResponse>(`/goals/deliverables/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+	deleteDeliverable: (id: number) =>
+		request<GoalResponse>(`/goals/deliverables/${id}`, { method: 'DELETE' }),
+
+	// Notion
+	getNotionStatus: () => request<NotionStatus>('/notion/status'),
+	saveNotionToken: (token: string) =>
+		request<NotionStatus>('/notion/token', { method: 'PUT', body: JSON.stringify({ token }) }),
+	deleteNotionToken: () => request<NotionStatus>('/notion/token', { method: 'DELETE' }),
+	saveNotionConfig: (data: {
+		database?: string;
+		rules?: { match: string; category: string }[];
+		default_category?: string;
+		push_new?: boolean;
+	}) => request<NotionStatus>('/notion/config', { method: 'PUT', body: JSON.stringify(data) }),
+	testNotion: () =>
+		request<{ title: string; missing_properties: string[] }>('/notion/test', { method: 'POST' }),
+	syncNotion: () => request<NotionSyncResult>('/notion/sync', { method: 'POST' }),
 };

@@ -29,6 +29,7 @@ async def _item_response(item, progress: dict, db: AsyncSession) -> PlanItemResp
         manual_count=progress["manual_count"],
         logged_minutes=progress["logged_minutes"],
         created_at=item.created_at,
+        notion_page_id=item.notion_page_id,
     )
 
 

@@ -2,6 +2,7 @@
 	import { page } from '$app/state';
 
 	const navItems = [
+		{ href: '/goals', label: 'Goals', icon: 'goals' },
 		{ href: '/planner', label: 'Planner', icon: 'planner' },
 		{ href: '/', label: 'Recorder', icon: 'dashboard' },
 		{ href: '/analytics', label: 'Analytics', icon: 'analytics' },
@@ -12,6 +13,7 @@
 
 	const icons: Record<string, string> = {
 		dashboard: 'M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6',
+		goals: 'M9 12l2 2 4-4M12 21a9 9 0 100-18 9 9 0 000 18z',
 		planner: 'M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z',
 		analytics: 'M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z',
 		chat: 'M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z',

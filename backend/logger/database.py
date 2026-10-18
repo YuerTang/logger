@@ -74,6 +74,9 @@ async def _migrate_schema(conn) -> None:
     await add_col_if_missing("timer_entries", "plan_item_id", "plan_item_id INTEGER REFERENCES plan_items(id) ON DELETE SET NULL")
     await add_col_if_missing("manual_entries", "plan_item_id", "plan_item_id INTEGER REFERENCES plan_items(id) ON DELETE SET NULL")
     await add_col_if_missing("plan_items", "importance", "importance TEXT")
+    await add_col_if_missing("plan_items", "notion_page_id", "notion_page_id TEXT")
+    await add_col_if_missing("plan_items", "notion_last_edited", "notion_last_edited TEXT")
+    await add_col_if_missing("plan_items", "notion_synced_status", "notion_synced_status TEXT")
 
 
 async def init_db() -> None:

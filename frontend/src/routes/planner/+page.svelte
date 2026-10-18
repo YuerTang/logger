@@ -37,6 +37,25 @@
 	let loading = $state(true);
 	let selectedItemId = $state<number | null>(null);
 	let filters = $state<PlannerFilters>(defaultPlannerFilters());
+	let notionReady = $state(false);
+	let syncing = $state(false);
+	let syncMsg = $state<string | null>(null);
+
+	async function syncNotion() {
+		syncing = true;
+		syncMsg = null;
+		try {
+			const r = await api.syncNotion();
+			syncMsg = r.created || r.updated || r.pushed_done || r.pushed_new
+				? `${r.created} new · ${r.updated} updated · ${r.pushed_done + r.pushed_new} sent`
+				: 'Up to date';
+			await loadItems();
+		} catch (e) {
+			syncMsg = e instanceof Error ? e.message : 'Sync failed';
+		}
+		syncing = false;
+		setTimeout(() => (syncMsg = null), 4000);
+	}
 
 	const filteredItems = $derived(
 		items.filter((it) => {
@@ -98,6 +117,11 @@
 	onMount(async () => {
 		await loadActiveSession();
 		await loadCategories();
+		try {
+			const st = await api.getNotionStatus();
+			notionReady = st.has_token && !!st.database_id;
+			if (notionReady) syncNotion();
+		} catch { /* */ }
 		// The panel needs to know about already-running timers (e.g. one started
 		// from the Dashboard) to show them inline instead of a stale "Start timer"
 		// button — same store the Dashboard keeps warm via polling.
@@ -116,7 +140,16 @@
 			<p class="mt-1 text-sm text-muted-foreground">Plan itinerary items across days, then start or log time against them.</p>
 		</div>
 		{#if $activeSession}
-			<PlannerFilterBar {categories} {filters} onChange={(f) => (filters = f)} />
+			<div class="flex flex-wrap items-center gap-2">
+				{#if notionReady}
+					{#if syncMsg}<span class="text-xs text-muted-foreground">{syncMsg}</span>{/if}
+					<button onclick={syncNotion} disabled={syncing}
+						class="rounded-md border border-border px-3 py-1.5 text-xs font-medium hover:bg-muted disabled:opacity-50">
+						{syncing ? 'Syncing…' : 'Sync Notion'}
+					</button>
+				{/if}
+				<PlannerFilterBar {categories} {filters} onChange={(f) => (filters = f)} />
+			</div>
 		{/if}
 	</div>
 

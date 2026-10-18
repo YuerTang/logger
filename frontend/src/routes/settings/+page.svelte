@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { theme } from '$lib/stores/theme';
-	import { api, type DBInfoResponse, type ChatStatusResponse, type SettingResponse } from '$lib/api/client';
+	import { api, type DBInfoResponse, type ChatStatusResponse, type SettingResponse, type NotionStatus, type NotionSyncResult } from '$lib/api/client';
 	import { timezone, COMMON_TIMEZONES, DEFAULT_TIMEZONE } from '$lib/stores/timezone';
 
 	let dbInfo = $state<DBInfoResponse | null>(null);
@@ -40,6 +40,75 @@
 		}
 	}
 
+	// Notion
+	let notion = $state<NotionStatus | null>(null);
+	let notionToken = $state('');
+	let notionDb = $state('');
+	let notionRules = $state<{ match: string; category: string }[]>([]);
+	let notionDefault = $state('');
+	let notionBusy = $state(false);
+	let notionMsg = $state<string | null>(null);
+	let notionMsgErr = $state(false);
+	let notionResult = $state<NotionSyncResult | null>(null);
+
+	function applyNotion(st: NotionStatus) {
+		notion = st;
+		notionDb = st.database_id ?? '';
+		notionRules = st.rules.length ? st.rules.map((r) => ({ ...r })) : [{ match: '', category: '' }];
+		notionDefault = st.default_category ?? '';
+		notionResult = st.last_result;
+	}
+
+	async function notionDo(fn: () => Promise<string | void>) {
+		notionBusy = true;
+		notionMsg = null;
+		notionMsgErr = false;
+		try {
+			const msg = await fn();
+			if (msg) notionMsg = msg;
+		} catch (e) {
+			notionMsg = e instanceof Error ? e.message : 'Something went wrong';
+			notionMsgErr = true;
+		} finally {
+			notionBusy = false;
+		}
+	}
+
+	const saveNotionToken = () =>
+		notionDo(async () => {
+			applyNotion(await api.saveNotionToken(notionToken.trim()));
+			notionToken = '';
+			return 'Token saved';
+		});
+
+	const saveNotionConfig = () =>
+		notionDo(async () => {
+			applyNotion(
+				await api.saveNotionConfig({
+					database: notionDb,
+					rules: notionRules.filter((r) => r.match.trim() && r.category.trim()),
+					default_category: notionDefault
+				})
+			);
+			const t = await api.testNotion();
+			return t.missing_properties.length
+				? `Connected to "${t.title}", but it's missing: ${t.missing_properties.join(', ')}`
+				: `Connected to "${t.title}"`;
+		});
+
+	const toggleNotionPush = () =>
+		notionDo(async () => {
+			applyNotion(await api.saveNotionConfig({ push_new: !notion?.push_new }));
+		});
+
+	const runNotionSync = () =>
+		notionDo(async () => {
+			notionResult = await api.syncNotion();
+			notion = await api.getNotionStatus();
+			const r = notionResult;
+			return `Synced: ${r.created} new, ${r.updated} updated, ${r.pushed_done + r.pushed_new} sent to Notion`;
+		});
+
 	// GitHub
 	let githubUsername = $state('');
 	let savedGithubUsername = $state<string | null>(null);
@@ -58,6 +127,7 @@
 			]);
 			dbInfo = db;
 			chatStatusData = status;
+			api.getNotionStatus().then(applyNotion).catch(() => {});
 			const ghSetting = settings.find((s: SettingResponse) => s.key === 'github_username');
 			if (ghSetting) {
 				savedGithubUsername = ghSetting.value;
@@ -427,6 +497,111 @@
 	</section>
 
 	<!-- GitHub Integration -->
+	<section class="space-y-4">
+		<h2 class="text-lg font-semibold">Notion Sync</h2>
+		<div class="rounded-lg border border-border bg-card p-5 space-y-5">
+			<p class="text-xs text-muted-foreground">
+				Brings dated tasks from your Notion task database into the Planner, and checks them off in Notion when you mark them done here. Syncs every 10 minutes while the app is open.
+			</p>
+
+			<!-- Token -->
+			<div class="space-y-2">
+				<div class="flex items-center justify-between">
+					<span class="text-sm font-medium">Integration token</span>
+					<span class="rounded-full px-2.5 py-0.5 text-xs font-medium {notion?.has_token ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' : 'bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400'}">
+						{notion?.has_token ? 'Saved' : 'Not set'}
+					</span>
+				</div>
+				<p class="text-xs text-muted-foreground">
+					Create one at notion.so/profile/integrations (Internal), then in Notion open your task database's page, ••• → Connections, and add it.
+				</p>
+				<div class="flex gap-2">
+					<input type="password" bind:value={notionToken} placeholder="ntn_… or secret_…"
+						class="flex-1 rounded-lg border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring" />
+					<button onclick={saveNotionToken} disabled={!notionToken.trim() || notionBusy}
+						class="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50">Save</button>
+				</div>
+				{#if notion?.has_token}
+					<button onclick={() => notionDo(async () => { applyNotion(await api.deleteNotionToken()); return 'Token removed'; })} class="text-xs text-destructive hover:underline">Remove token</button>
+				{/if}
+			</div>
+
+			<!-- Database + mapping -->
+			<div class="space-y-3 border-t border-border pt-4">
+				<label class="block space-y-1">
+					<span class="text-sm font-medium">Task database</span>
+					<input bind:value={notionDb} placeholder="Paste the database link or ID"
+						class="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring" />
+					<span class="block text-xs text-muted-foreground">Expects properties Name (title), When (date), Complete (checkbox), Projects (relation).</span>
+				</label>
+
+				<div class="space-y-2">
+					<span class="text-sm font-medium">Category rules</span>
+					<p class="text-xs text-muted-foreground">
+						Tasks whose title or project contains a category's name (e.g. "EE 227" → EE227) are matched automatically. Add rules for the rest, e.g. project "Life Admin" → Logistics.
+					</p>
+					{#each notionRules as rule, i}
+						<div class="flex items-center gap-2">
+							<input bind:value={rule.match} placeholder="Text or project name"
+								class="min-w-0 flex-1 rounded-md border border-input bg-background px-2.5 py-1.5 text-sm" />
+							<span class="text-xs text-muted-foreground">→</span>
+							<input bind:value={rule.category} placeholder="Category"
+								class="w-36 rounded-md border border-input bg-background px-2.5 py-1.5 text-sm" />
+							<button onclick={() => (notionRules = notionRules.filter((_, j) => j !== i))} class="text-xs text-muted-foreground hover:text-destructive" aria-label="Remove rule">✕</button>
+						</div>
+					{/each}
+					<button onclick={() => (notionRules = [...notionRules, { match: '', category: '' }])} class="text-xs text-primary hover:underline">+ Add rule</button>
+				</div>
+
+				<label class="flex items-center gap-2">
+					<span class="text-sm">Anything else goes to</span>
+					<input bind:value={notionDefault} placeholder="(skip it)"
+						class="w-40 rounded-md border border-input bg-background px-2.5 py-1.5 text-sm" />
+				</label>
+
+				<button onclick={saveNotionConfig} disabled={!notion?.has_token || !notionDb.trim() || notionBusy}
+					class="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
+					Save &amp; test connection
+				</button>
+			</div>
+
+			<!-- Push + sync -->
+			<div class="space-y-3 border-t border-border pt-4">
+				<div class="flex items-center justify-between">
+					<div>
+						<div class="text-sm font-medium">Send new Planner items to Notion</div>
+						<div class="text-xs text-muted-foreground">Items you plan here also show up in your Notion task list.</div>
+					</div>
+					<button onclick={toggleNotionPush} disabled={notionBusy} aria-label="Toggle sending new items"
+						class="relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors {notion?.push_new ? 'bg-primary' : 'bg-muted-foreground/30'}">
+						<span class="pointer-events-none inline-block h-4 w-4 rounded-full bg-white shadow transition-transform {notion?.push_new ? 'translate-x-4' : 'translate-x-0'}"></span>
+					</button>
+				</div>
+				<div class="flex items-center gap-3">
+					<button onclick={runNotionSync} disabled={!notion?.has_token || !notion?.database_id || notionBusy}
+						class="rounded-lg border border-border px-4 py-2 text-sm font-medium hover:bg-muted disabled:opacity-50">
+						{notionBusy ? 'Working…' : 'Sync now'}
+					</button>
+					{#if notion?.last_sync}
+						<span class="text-xs text-muted-foreground">Last sync {new Date(notion.last_sync).toLocaleString()}</span>
+					{/if}
+				</div>
+				{#if notionResult?.unmatched?.length}
+					<p class="text-xs text-amber-600 dark:text-amber-400">
+						Skipped (no category): {notionResult.unmatched.join(', ')}. Add a rule or a fallback category.
+					</p>
+				{/if}
+				{#if notionResult?.errors?.length}
+					<p class="text-xs text-destructive">{notionResult.errors.join(' · ')}</p>
+				{/if}
+			</div>
+
+			{#if notionMsg}
+				<p class="text-xs {notionMsgErr ? 'text-destructive' : 'text-muted-foreground'}">{notionMsg}</p>
+			{/if}
+		</div>
+	</section>
+
 	<section class="space-y-4">
 		<h2 class="text-lg font-semibold">GitHub Integration</h2>
 		<div class="rounded-lg border border-border bg-card p-5 space-y-4">

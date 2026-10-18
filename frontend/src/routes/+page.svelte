@@ -24,7 +24,8 @@
 	import { colorForCategory } from '$lib/utils/chart';
 	import { viewDate, goToToday } from '$lib/stores/viewDate';
 	import { todayYMD, currentHour } from '$lib/stores/clock';
-	import type { ManualEntryResponse } from '$lib/api/client';
+	import type { ManualEntryResponse, GoalResponse, DeliverableResponse } from '$lib/api/client';
+	import NextUp from '$lib/components/goals/NextUp.svelte';
 
 	// SVG icon strings used by stat cards
 	const ICON_CLOCK = `<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.75"><circle cx="12" cy="12" r="9"/><path stroke-linecap="round" d="M12 7v5l3 2"/></svg>`;
@@ -206,13 +207,26 @@
 		} catch (e: unknown) { console.error(e); }
 	}
 
+	// Goals: the open deliverables, so opening the Recorder answers "what must I do?"
+	let goals = $state<GoalResponse[]>([]);
+	async function loadGoals() {
+		try { goals = await api.getGoals(); } catch { /* goals are optional */ }
+	}
+	async function toggleDeliverable(d: DeliverableResponse) {
+		try {
+			const g = await api.updateDeliverable(d.id, { done: !d.done });
+			goals = goals.map((x) => (x.id === g.id ? g : x));
+		} catch (e: unknown) { console.error(e); }
+	}
+
 	// The initial load is driven by the date effect above (it runs on mount).
 	onMount(() => {
 		startPolling();
+		loadGoals();
 		// Coming back to a window that has been sitting in the background should
 		// show what's actually on the server for the — possibly new — current day.
 		const refresh = () => {
-			if (!document.hidden) loadDashboard();
+			if (!document.hidden) { loadDashboard(); loadGoals(); }
 		};
 		window.addEventListener('focus', refresh);
 		document.addEventListener('visibilitychange', refresh);
@@ -370,6 +384,16 @@
 				</div>
 			</div>
 		</div>
+
+		{#if viewingToday && goals.some((g) => g.deliverables.some((d) => !d.done))}
+			<section class="rounded-xl border border-border bg-card p-4">
+				<div class="flex items-center justify-between">
+					<div class="text-xs font-medium uppercase tracking-wider text-muted-foreground">Next up</div>
+					<a href="/goals" class="text-xs text-muted-foreground hover:text-foreground">All goals →</a>
+				</div>
+				<div class="mt-1"><NextUp {goals} limit={4} compact onToggle={toggleDeliverable} /></div>
+			</section>
+		{/if}
 
 		<!-- Break / rest day banner -->
 		{#if dailyActivity?.is_break}
