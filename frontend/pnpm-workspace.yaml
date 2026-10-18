@@ -1,2 +1,5 @@
 ignoredBuiltDependencies:
   - esbuild
+# Newer pnpm fails the install on ignored build scripts; esbuild ships
+# prebuilt binaries, so skipping its script is safe.
+strictDepBuilds: false
